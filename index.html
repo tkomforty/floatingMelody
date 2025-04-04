@@ -2,9 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sonic Visualizer</title>
     <style>
         body, html {
@@ -14,49 +12,9 @@
             width: 100%;
             height: 100%;
             background: #000;
-            position: fixed;
-            touch-action: none;
         }
         canvas {
             display: block;
-            touch-action: none;
-        }
-        #startButton {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            padding: 20px 40px;
-            background: rgba(0, 100, 255, 0.8);
-            color: white;
-            border: none;
-            border-radius: 50px;
-            font-size: 22px;
-            font-weight: bold;
-            z-index: 100;
-            cursor: pointer;
-            box-shadow: 0 0 30px rgba(0, 100, 255, 0.7);
-            -webkit-tap-highlight-color: transparent;
-            /* Make touch target larger */
-            min-width: 200px;
-            text-align: center;
-            /* iOS-specific styles */
-            -webkit-appearance: none;
-            -webkit-touch-callout: none;
-            user-select: none;
-        }
-        #instructions {
-            position: absolute;
-            bottom: 20px;
-            left: 0;
-            width: 100%;
-            text-align: center;
-            color: rgba(255, 255, 255, 0.7);
-            font-family: Arial, sans-serif;
-            font-size: 14px;
-            z-index: 50;
-            pointer-events: none;
-            opacity: 0.8;
         }
     </style>
     
@@ -65,51 +23,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
 </head>
 <body>
-    <button id="startButton" ontouchstart="void(0);" ontouchend="void(0);">Tap to Begin</button>
-    <div id="instructions">Tap and move to interact with the galaxy</div>
-    
-    <!-- iOS-specific: Add a redundant fallback button that appears if main button fails -->
-    <script>
-        // Add a delayed check - if button still shows after 2 seconds, we'll add a fallback
-        setTimeout(function() {
-            const startBtn = document.getElementById('startButton');
-            if (startBtn && window.getComputedStyle(startBtn).display !== 'none') {
-                const fallbackBtn = document.createElement('div');
-                fallbackBtn.id = 'fallbackButton';
-                fallbackBtn.innerText = '⭐ TAP HERE ⭐';
-                fallbackBtn.style.position = 'absolute';
-                fallbackBtn.style.top = '60%';
-                fallbackBtn.style.left = '50%';
-                fallbackBtn.style.transform = 'translate(-50%, -50%)';
-                fallbackBtn.style.padding = '25px 45px';
-                fallbackBtn.style.background = 'rgba(255, 50, 150, 0.9)';
-                fallbackBtn.style.color = 'white';
-                fallbackBtn.style.fontWeight = 'bold';
-                fallbackBtn.style.fontSize = '24px';
-                fallbackBtn.style.borderRadius = '50px';
-                fallbackBtn.style.zIndex = '200';
-                fallbackBtn.style.textAlign = 'center';
-                fallbackBtn.style.boxShadow = '0 0 30px rgba(255, 50, 150, 0.8)';
-                fallbackBtn.style.cursor = 'pointer';
-                fallbackBtn.style.userSelect = 'none';
-                fallbackBtn.style.webkitTapHighlightColor = 'transparent';
-                
-                document.body.appendChild(fallbackBtn);
-                
-                // Add event listeners to the fallback button
-                ['click', 'touchstart', 'touchend'].forEach(function(event) {
-                    fallbackBtn.addEventListener(event, function(e) {
-                        e.preventDefault();
-                        startBtn.style.display = 'none';
-                        fallbackBtn.style.display = 'none';
-                        if (typeof startApp === 'function') startApp();
-                        return false;
-                    }, false);
-                });
-            }
-        }, 2000);
-    </script>
-    
     <script>
         // Debug mode
         const DEBUG = false;
@@ -118,11 +31,9 @@
         let galaxyParticles = [];
         let time = 0;
         let colorPalette = [];
-        let lastTouchX = 0;
-        let lastTouchY = 0;
-        let touchMoveTolerance = 5; // Minimum movement to trigger hover effect
-        let canvas;
-        let isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+        let mouseMoveTolerance = 5; // Minimum movement to trigger hover effect
         
         // Audio variables
         let synthA, melodySequencer;
@@ -137,32 +48,12 @@
         let currentChord = 0;
         let audioInitialized = false;
         
-        // Start button element
-        const startButton = document.getElementById('startButton');
-        const instructions = document.getElementById('instructions');
-        
-        // Initialize app when button is pressed
-        startButton.addEventListener('click', function() {
-            startButton.style.display = 'none';
-            // Fade instructions after 3 seconds
-            setTimeout(() => {
-                instructions.style.opacity = '0.5';
-                setTimeout(() => {
-                    instructions.style.opacity = '0';
-                }, 1000);
-            }, 3000);
-            // Initialize audio
-            initAudio();
-        });
-        
         // P5.js setup function
         function setup() {
             if (DEBUG) console.log("P5.js setup function called");
             
-            // Create WebGL canvas with device-appropriate settings
-            canvas = createCanvas(windowWidth, windowHeight, WEBGL);
-            pixelDensity(1); // Optimize for mobile
-            
+            // Create WebGL canvas
+            let canvas = createCanvas(windowWidth, windowHeight, WEBGL);
             blendMode(BLEND);
             // Force correct positioning
             if (canvas.elt) {
@@ -173,22 +64,9 @@
                 canvas.elt.style.zIndex = '0';
             }
             
-            // Prevent default touch behaviors
-            canvas.elt.addEventListener('touchstart', function(e) {
-                e.preventDefault();
-                // Handle potential direct canvas touches
-                if (startButton && startButton.style.display !== 'none' && e.touches.length > 0) {
-                    startApp();
-                }
-            }, { passive: false });
-            
-            canvas.elt.addEventListener('touchmove', function(e) {
-                e.preventDefault();
-            }, { passive: false });
-            
-            // Set rendering options - lower quality for mobile
+            // Set rendering options
             try {
-                setAttributes('antialias', !isMobile);
+                setAttributes('antialias', true);
             } catch (e) {
                 console.error("Error setting attributes:", e);
             }
@@ -201,16 +79,18 @@
                 color(150, 50, 255)   // Purple
             ];
             
-            // Create particles - fewer for mobile
+            // Create particles
             createParticles();
+            
+            // Set up audio click listener
+            canvas.mousePressed(initAudio);
             
             if (DEBUG) console.log("Setup complete, canvas size:", width, "x", height);
         }
         
         // Create the particle system
         function createParticles() {
-            // Reduce particle count on mobile
-            const particleCount = isMobile ? 300 : 500;
+            const particleCount = 500;
             
             for (let i = 0; i < particleCount; i++) {
                 let r = random(40, 400);
@@ -220,7 +100,7 @@
                     x: r * cos(angle),
                     y: r * sin(angle),
                     z: random(-200, 200),
-                    size: random(1, isMobile ? 4 : 6), // Smaller particles on mobile
+                    size: random(1, 6),
                     color: colorPalette[floor(random(colorPalette.length))],
                     speedFactor: random(0.5, 4)
                 });
@@ -233,7 +113,7 @@
             time += 0.01;
             
             // Clear background
-            background(5, 10, 30, 100);
+            background(5, 10, 30, 50);
             
             // Static camera position (no rotation)
             camera(0, 0, 1000, 0, 0, 0, 0, 1, 0);
@@ -277,13 +157,13 @@
                 
                 p.x = radius * cos(angle);
                 p.y = radius * sin(angle);
-                p.z += sin(time + i * 0.01) * 0.5;
+                p.z += sin(time + i * 0.1) * 0.5;
                 
                 // Keep within bounds
                 if (p.z > 200) p.z = -200;
                 if (p.z < -200) p.z = 200;
                 
-                // Special effects for particles created by click/touch
+                // Special effects for particles created by click
                 let particleSize = p.size/4;
                 let particleColor = p.color;
                 
@@ -309,25 +189,16 @@
                     }
                 }
                 
-                // Draw particle - use point instead of sphere on mobile for performance
+                // Draw particle
                 push();
                 translate(p.x, p.y, p.z);
-                
-                if (isMobile) {
-                    // Use points for better performance on mobile
-                    stroke(particleColor);
-                    strokeWeight(particleSize * 1.5);
-                    point(0, 0, 0);
-                } else {
-                    fill(particleColor);
-                    sphere(particleSize);
-                }
-                
+                fill(particleColor);
+                sphere(particleSize);
                 pop();
             }
             
             // Limit the number of particles for performance
-            const maxParticles = isMobile ? 600 : 1000;
+            const maxParticles = 1000;
             if (galaxyParticles.length > maxParticles) {
                 // Remove oldest particles when we exceed the limit
                 galaxyParticles.splice(0, galaxyParticles.length - maxParticles);
@@ -341,199 +212,153 @@
             if (audioInitialized || typeof Tone === 'undefined') return;
             
             try {
-                // Start Tone.js with mobile optimizations
+                // Start Tone.js
                 Tone.start().then(() => {
-                    // Detect if we're on iOS
-                    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+                    // Create a limiter to prevent clipping at the master output
+                    const masterLimiter = new Tone.Limiter(-1.0).toDestination();
                     
-                    // Reduce audio complexity on mobile
-                    const mobileFriendly = isIOS || isMobile;
+                    // Add compressor for dynamic range control
+                    const masterCompressor = new Tone.Compressor({
+                        threshold: -24,
+                        ratio: 4,
+                        attack: 0.05,
+                        release: 0.3,
+                        knee: 10
+                    }).connect(masterLimiter);
                     
-                    // Create a simpler audio chain for mobile
-                    if (mobileFriendly) {
-                        // Simplified audio processing for mobile
-                        // Create a limiter to prevent clipping
-                        const masterLimiter = new Tone.Limiter(-1.5).toDestination();
-                        
-                        // Simple reverb with shorter decay
-                        const masterReverb = new Tone.Reverb({
-                            decay: 3,
-                            wet: 0.3
-                        }).connect(masterLimiter);
-                        
-                        // Create main synth with simpler settings
-                        synthA = new Tone.PolySynth(Tone.Synth, {
-                            oscillator: {
-                                type: 'sine'
-                            },
-                            envelope: {
-                                attack: 0.05,
-                                decay: 0.2,
-                                sustain: 0.3,
-                                release: 1
-                            },
-                            volume: -10
-                        }).connect(masterReverb);
-                        
-                        // Lower polyphony for better performance
-                        synthA.maxPolyphony = 4;
-                        
-                        // Create ambient pad with simpler settings
-                        ambientSynth = new Tone.PolySynth(Tone.Synth, {
-                            oscillator: {
-                                type: 'sine'
-                            },
-                            envelope: {
-                                attack: 2,
-                                decay: 1,
-                                sustain: 0.5,
-                                release: 2
-                            },
-                            volume: -15
-                        }).connect(masterReverb);
-                        
-                        // Lower polyphony
-                        ambientSynth.maxPolyphony = 4;
-                        
-                        // Create a plucky synth with simpler settings
-                        chordPad = new Tone.PolySynth(Tone.Synth, {
-                            oscillator: {
-                                type: 'triangle'
-                            },
-                            envelope: {
-                                attack: 0.1,
-                                decay: 0.3,
-                                sustain: 0.4,
-                                release: 1
-                            },
-                            volume: -12
-                        }).connect(masterReverb);
-                        
-                        // Lower polyphony
-                        chordPad.maxPolyphony = 3;
-                    } else {
-                        // Full audio processing chain for desktop
-                        // Create a limiter to prevent clipping at the master output
-                        const masterLimiter = new Tone.Limiter(-1.0).toDestination();
-                        
-                        // Add compressor for dynamic range control
-                        const masterCompressor = new Tone.Compressor({
-                            threshold: -24,
-                            ratio: 4,
-                            attack: 0.05,
-                            release: 0.3,
-                            knee: 10
-                        }).connect(masterLimiter);
-                        
-                        // Create a master reverb effect with pre-limiting
-                        const masterReverb = new Tone.Reverb({
-                            decay: 8,
-                            wet: 0.4
-                        }).connect(masterCompressor);
-                        
-                        // Create a master delay effect with feedback limiting
-                        const masterDelay = new Tone.FeedbackDelay({
-                            delayTime: 0.5,
-                            feedback: 0.2,
-                            wet: 0.25
-                        }).connect(masterReverb);
-                        
-                        // Create a filter for sweeping effects with volume compensation
-                        const filter = new Tone.Filter({
-                            type: "lowpass",
-                            frequency: 5000,
-                            Q: 0.8
-                        }).connect(masterDelay);
-                        
-                        // Create LFO to modulate filter cutoff with rate limiting
-                        const filterLFO = new Tone.LFO({
-                            frequency: 0.1,
-                            min: 300,
-                            max: 4000
-                        }).connect(filter.frequency).start();
-                        
-                        // Volume automation to prevent filter resonance overloads
-                        const filterVolume = new Tone.Gain(1).connect(filter);
-                        const filterVolumeLFO = new Tone.LFO({
-                            frequency: 0.1,
-                            min: 0.6,
-                            max: 1.0
-                        }).connect(filterVolume.gain).start();
-                        filterVolumeLFO.phase = 180;
-                        
-                        // Create main synth for clicks with dynamic volume control
-                        synthA = new Tone.PolySynth(Tone.Synth, {
-                            oscillator: {
-                                type: 'sine'
-                            },
-                            envelope: {
-                                attack: 0.02,
-                                decay: 0.3,
-                                sustain: 0.4,
-                                release: 3
-                            },
-                            volume: -6
-                        }).connect(filterVolume);
-                        
-                        // Add voice count limiting for polyphony management
-                        synthA.maxPolyphony = 6;
-                        
-                        // Create ambient pad synth with built-in dynamic control
-                        ambientSynth = new Tone.PolySynth(Tone.Synth, {
-                            oscillator: {
-                                type: 'sine'
-                            },
-                            envelope: {
-                                attack: 2,
-                                decay: 1,
-                                sustain: 0.6,
-                                release: 4
-                            },
-                            volume: -12
-                        }).connect(masterReverb);
-                        
-                        // Limit chord polyphony
-                        ambientSynth.maxPolyphony = 8;
-                        
-                        // Create a plucky synth for melodic sequences with dynamic attenuation
-                        chordPad = new Tone.PolySynth(Tone.Synth, {
-                            oscillator: {
-                                type: 'triangle'
-                            },
-                            envelope: {
-                                attack: 0.1,
-                                decay: 0.3,
-                                sustain: 0.5,
-                                release: 2
-                            },
-                            volume: -10
-                        }).connect(masterDelay);
-                        
-                        // Limit melodic sequence polyphony
-                        chordPad.maxPolyphony = 4;
-                    }
+                    // Create a master reverb effect with pre-limiting
+                    const masterReverb = new Tone.Reverb({
+                        decay: 8,
+                        wet: 0.4  // Reduced from 0.6 to prevent buildup
+                    }).connect(masterCompressor);
                     
-                    // Start ambient music with shorter initial delay for iOS
-                    setTimeout(() => {
-                        startAmbientMusic();
+                    // Create a master delay effect with feedback limiting
+                    const masterDelay = new Tone.FeedbackDelay({
+                        delayTime: 0.5,
+                        feedback: 0.2,     // Reduced from 0.3 to prevent feedback buildup
+                        wet: 0.25          // Reduced from 0.3
+                    }).connect(masterReverb);
+                    
+                    // Create a filter for sweeping effects with volume compensation
+                    const filter = new Tone.Filter({
+                        type: "lowpass",
+                        frequency: 5000,
+                        Q: 0.8             // Reduced from 1.0 to prevent resonance peaks
+                    }).connect(masterDelay);
+                    
+                    // Create LFO to modulate filter cutoff with rate limiting
+                    const filterLFO = new Tone.LFO({
+                        frequency: 0.1,
+                        min: 300,
+                        max: 4000          // Reduced from 5000 to prevent high-frequency harshness
+                    }).connect(filter.frequency).start();
+                    
+                    // Volume automation to prevent filter resonance overloads
+                    const filterVolume = new Tone.Gain(1).connect(filter);
+                    const filterVolumeLFO = new Tone.LFO({
+                        frequency: 0.1,
+                        min: 0.6,          // Attenuate during filter sweeps
+                        max: 1.0
+                    }).connect(filterVolume.gain).start();
+                    filterVolumeLFO.phase = 180; // Invert phase to reduce volume when filter is at extremes
+                    
+                    // Create main synth for clicks with dynamic volume control
+                    synthA = new Tone.PolySynth(Tone.Synth, {
+                        oscillator: {
+                            type: 'sine'
+                        },
+                        envelope: {
+                            attack: 0.02,
+                            decay: 0.3,
+                            sustain: 0.4,
+                            release: 3
+                        },
+                        volume: -6         // Reduced initial volume to prevent stacking
+                    }).connect(filterVolume);
+                    
+                    // Add voice count limiting for polyphony management
+                    synthA.maxPolyphony = 6;
+                    
+                    // Create ambient pad synth with built-in dynamic control
+                    ambientSynth = new Tone.PolySynth(Tone.Synth, {
+                        oscillator: {
+                            type: 'sine'
+                        },
+                        envelope: {
+                            attack: 2,
+                            decay: 1,
+                            sustain: 0.6,  // Reduced from 0.8
+                            release: 4
+                        },
+                        volume: -12        // Lower pad volume
+                    }).connect(masterReverb);
+                    
+                    // Limit chord polyphony
+                    ambientSynth.maxPolyphony = 8;
+                    
+                    // Create a plucky synth for melodic sequences with dynamic attenuation
+                    chordPad = new Tone.PolySynth(Tone.Synth, {
+                        oscillator: {
+                            type: 'triangle'
+                        },
+                        envelope: {
+                            attack: 0.1,
+                            decay: 0.3,
+                            sustain: 0.5,  // Reduced from 0.7
+                            release: 2
+                        },
+                        volume: -10        // Reduced initial volume
+                    }).connect(masterDelay);
+                    
+                    // Limit melodic sequence polyphony
+                    chordPad.maxPolyphony = 4;
+                    
+                    // Create a volume analyser to monitor levels
+                    const volumeAnalyser = new Tone.Analyser('waveform', 1024);
+                    masterLimiter.connect(volumeAnalyser);
+                    
+                    // Periodically check for potential clipping
+                    const clipMonitor = setInterval(() => {
+                        const waveform = volumeAnalyser.getValue();
+                        let peak = 0;
                         
-                        // Create melodic sequence with reduced complexity on mobile
-                        if (isMobile) {
-                            createSimpleMelodicSequence();
-                        } else {
-                            createMelodicSequence();
+                        // Find peak amplitude
+                        for (let i = 0; i < waveform.length; i++) {
+                            const abs = Math.abs(waveform[i]);
+                            if (abs > peak) peak = abs;
                         }
                         
-                        audioInitialized = true;
-                        
-                        if (DEBUG) console.log("Audio initialized successfully with mobile optimizations:", isMobile);
-                    }, isIOS ? 200 : 50); // Shorter delay on iOS
+                        // If we're approaching clipping (above 90% of max)
+                        if (peak > 0.9) {
+                            // Reduce all synth volumes temporarily
+                            const reductionAmount = 1 - (peak - 0.9) * 10; // Calculate attenuation
+                            synthA.volume.rampTo(synthA.volume.value - 3, 0.1);
+                            ambientSynth.volume.rampTo(ambientSynth.volume.value - 2, 0.5);
+                            chordPad.volume.rampTo(chordPad.volume.value - 3, 0.3);
+                            
+                            // Log if in debug mode
+                            if (DEBUG) console.log("Automatic level reduction applied:", peak);
+                            
+                            // Gradually restore volumes after a short delay
+                            setTimeout(() => {
+                                synthA.volume.rampTo(synthA.volume.value + 3, 5);
+                                ambientSynth.volume.rampTo(ambientSynth.volume.value + 2, 8);
+                                chordPad.volume.rampTo(chordPad.volume.value + 3, 6);
+                            }, 1000);
+                        }
+                    }, 500); // Check every 500ms
+                    
+                    // Start ambient music
+                    startAmbientMusic();
+                    
+                    // Create melodic sequence
+                    createMelodicSequence();
+                    
+                    audioInitialized = true;
+                    
+                    if (DEBUG) console.log("Audio initialized successfully with smart attenuation and DSP protection");
                 }).catch(err => {
                     console.error("Failed to initialize audio:", err);
-                    // Show error message to user
-                    instructions.textContent = "Audio error. Please reload the page.";
-                    instructions.style.opacity = "1";
-                    instructions.style.color = "red";
                 });
             } catch (e) {
                 console.error("Error in audio initialization:", e);
@@ -567,57 +392,7 @@
             ambientSynth.triggerAttack(chords[chordIndex], Tone.now(), 0.2);
         }
         
-        // Create a simplified melodic sequence for mobile
-        function createSimpleMelodicSequence() {
-            // Create a simplified pattern with fewer notes
-            const notePattern = [];
-            
-            // Create a simpler pattern
-            for (let i = 0; i < 8; i++) {
-                // 60% chance of rest for mobile (increased to reduce CPU usage)
-                if (Math.random() < 0.6) {
-                    notePattern.push(null);
-                } else {
-                    // Random note from scale
-                    const note = melodyNotes[Math.floor(Math.random() * melodyNotes.length)];
-                    notePattern.push(note);
-                }
-            }
-            
-            // Create a sequence with lower update rate
-            melodySequencer = new Tone.Sequence((time, note) => {
-                if (note !== null) {
-                    // Play the note with reduced velocity
-                    chordPad.triggerAttackRelease(note, "8n", time, 0.1);
-                }
-            }, notePattern, "4n").start(0); // Using quarter notes instead of eighth notes
-            
-            // Generate a new pattern less frequently
-            Tone.Transport.scheduleRepeat(() => {
-                // Stop previous pattern
-                melodySequencer.stop();
-                
-                // Create new pattern with reduced density
-                const newPattern = [];
-                
-                for (let i = 0; i < 8; i++) {
-                    if (Math.random() < 0.7) { // Higher chance of rest
-                        newPattern.push(null);
-                    } else {
-                        const note = melodyNotes[Math.floor(Math.random() * melodyNotes.length)];
-                        newPattern.push(note);
-                    }
-                }
-                
-                // Update sequence with new pattern
-                melodySequencer.events = newPattern;
-                
-                // Restart sequence
-                melodySequencer.start();
-            }, "4m"); // Generate new pattern every 4 measures instead of 2
-        }
-        
-        // Create a melodic sequence for desktop
+        // Create a melodic sequence that plays automatically
         function createMelodicSequence() {
             // Create a pattern that plays melodic notes
             const notePattern = [];
@@ -684,39 +459,17 @@
             }, "2m");
         }
         
-        // P5.js mouse events
-        
         // Handle mouse clicks - create particles and trigger musical events
         function mousePressed() {
-            handleInteraction(mouseX, mouseY);
-            return false; // Prevent default
-        }
-        
-        // Handle touch events for mobile
-        function touchStarted() {
-            // Get the first touch point
-            if (touches.length > 0) {
-                handleInteraction(touches[0].x, touches[0].y);
-            }
-            return false; // Prevent default
-        }
-        
-        // Handle interaction (common code for mouse and touch)
-        function handleInteraction(x, y) {
             try {
-                if (startButton.style.display !== 'none') {
-                    // If the start button is still visible, skip interaction
-                    return;
-                }
-                
                 // Play sound if audio is ready
                 if (audioInitialized && synthA) {
-                    // Map interaction y position to octave
-                    const octave = map(y, 0, height, 5, 3);
+                    // Map mouse y position to octave
+                    const octave = map(mouseY, 0, height, 5, 3);
                     const noteBase = floor(octave);
                     
                     // Create a small chord based on mouse position
-                    const noteIndex = floor(map(x, 0, width, 0, melodyNotes.length));
+                    const noteIndex = floor(map(mouseX, 0, width, 0, melodyNotes.length));
                     const baseNote = melodyNotes[noteIndex].slice(0, -1);
                     
                     // Create a small chord
@@ -725,8 +478,10 @@
                         baseNote + (noteBase + 1)
                     ];
                     
-                    // Calculate a dynamic velocity based on current activity
-                    let dynamicVelocity = 0.6; // Lower default for mobile
+                    // Calculate a dynamic velocity based on current mouse activity
+                    // Lower velocity when there's been a lot of recent interaction
+                    let activityFactor = constrain(frameRate() / 60, 0.5, 1);
+                    let dynamicVelocity = map(activityFactor, 0.5, 1, 0.4, 0.8);
                     
                     // Play notes with dynamic velocity
                     synthA.releaseAll(); // Release any hanging notes to prevent buildup
@@ -737,22 +492,21 @@
                     });
                 }
                 
-                // Convert interaction position to 3D space
+                // Convert mouse position to 3D space
                 let mouse3D = createVector(
-                    map(x, 0, width, -width/2, width/2),
-                    map(y, 0, height, -height/2, height/2),
+                    map(mouseX, 0, width, -width/2, width/2),
+                    map(mouseY, 0, height, -height/2, height/2),
                     0
                 );
                 
-                // Add new particles - fewer on mobile
-                const particleCount = isMobile ? 20 : 50;
-                for (let i = 0; i < particleCount; i++) {
+                // Add new particles
+                for (let i = 0; i < 50; i++) {
                     // Create particle
                     const newParticle = {
                         x: mouse3D.x + random(-20, 20),
                         y: mouse3D.y + random(-20, 20),
                         z: random(-50, 50),
-                        size: random(isMobile ? 2 : 4, isMobile ? 8 : 12),
+                        size: random(4, 12),
                         color: colorPalette[floor(random(colorPalette.length))],
                         speedFactor: random(1, 3),
                         clickCreated: true,
@@ -762,56 +516,46 @@
                     galaxyParticles.push(newParticle);
                 }
             } catch (e) {
-                console.error("Error in interaction handler:", e);
+                console.error("Error in mousePressed:", e);
             }
+            
+            // Prevent default browser behavior
+            return false;
         }
         
         // Handle mouse movement and scattering with musical response
         function mouseMoved() {
-            handleMovement(mouseX, mouseY);
-        }
-        
-        // Handle touch movement
-        function touchMoved() {
-            if (touches.length > 0) {
-                handleMovement(touches[0].x, touches[0].y);
-            }
-            return false; // Prevent default
-        }
-        
-        // Common movement handler
-        function handleMovement(x, y) {
-            // Only process if interaction point has moved enough to avoid constant triggering
-            if (dist(x, y, lastTouchX, lastTouchY) < touchMoveTolerance) {
+            // Only process if mouse has moved enough to avoid constant triggering
+            if (dist(mouseX, mouseY, lastMouseX, lastMouseY) < mouseMoveTolerance) {
                 return;
             }
             
-            // Update last interaction position
-            lastTouchX = x;
-            lastTouchY = y;
+            // Update last mouse position
+            lastMouseX = mouseX;
+            lastMouseY = mouseY;
             
-            // Convert interaction position to 3D space
-            let xTranslated = map(x, 0, width, -width/2, width/2);
-            let yTranslated = map(y, 0, height, -height/2, height/2);
+            // Convert mouse position to 3D space
+            let mouseXTranslated = map(mouseX, 0, width, -width/2, width/2);
+            let mouseYTranslated = map(mouseY, 0, height, -height/2, height/2);
             
             // Count affected particles to determine if we should trigger a sound
             let affectedCount = 0;
             
-            // Find particles near the interaction point and scatter them
+            // Find particles near the mouse and scatter them
             for (let i = 0; i < galaxyParticles.length; i++) {
                 let p = galaxyParticles[i];
                 
-                // Calculate distance from interaction point in 2D (x,y) plane
-                let distance = dist(p.x, p.y, xTranslated, yTranslated);
+                // Calculate distance from mouse in 2D (x,y) plane
+                let distance = dist(p.x, p.y, mouseXTranslated, mouseYTranslated);
                 
                 // Only affect particles within a certain range
-                let scatterRadius = isMobile ? 100 : 70; // Larger radius on mobile for easier interaction
+                let scatterRadius = 70; // Increased scatter radius
                 if (distance < scatterRadius) {
                     affectedCount++;
                     
-                    // Calculate scatter direction (away from interaction point)
-                    let angle = atan2(p.y - yTranslated, p.x - xTranslated);
-                    let scatterForce = map(distance, 0, scatterRadius, 12, 1);
+                    // Calculate scatter direction (away from mouse)
+                    let angle = atan2(p.y - mouseYTranslated, p.x - mouseXTranslated);
+                    let scatterForce = map(distance, 0, scatterRadius, 12, 1); // Stronger effect
                     
                     // Apply scatter impulse
                     p.x += cos(angle) * scatterForce;
@@ -828,11 +572,11 @@
                 }
             }
             
-            // Trigger subtle sounds when enough particles are affected (with reduced frequency on mobile)
-            if (audioInitialized && affectedCount > 10 && frameCount % (isMobile ? 20 : 10) === 0) {
-                // Map interaction position to musical parameters
-                const note = melodyNotes[floor(map(x, 0, width, 0, melodyNotes.length))];
-                const velocity = map(affectedCount, 10, 50, 0.05, isMobile ? 0.15 : 0.2);
+            // Trigger subtle sounds when enough particles are affected (and not too often)
+            if (audioInitialized && affectedCount > 10 && frameCount % 10 === 0) {
+                // Map mouse position to musical parameters
+                const note = melodyNotes[floor(map(mouseX, 0, width, 0, melodyNotes.length))];
+                const velocity = map(affectedCount, 10, 50, 0.05, 0.2);
                 
                 // Play a soft note based on movement
                 if (chordPad) {
@@ -845,11 +589,6 @@
         function windowResized() {
             resizeCanvas(windowWidth, windowHeight);
         }
-        
-        // Prevent default behavior for touchend to avoid potential iOS issues
-        document.addEventListener('touchend', function(e) {
-            e.preventDefault();
-        }, { passive: false });
     </script>
 </body>
 </html>

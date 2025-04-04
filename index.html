@@ -91,6 +91,34 @@
         function startAppIfNeeded(e) {
             if (!appStarted) {
                 appStarted = true;
+                
+                // For iOS, we need to handle audio unlocking explicitly with user gesture
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+                if (isIOS) {
+                    // Create an iOS-specific audio context
+                    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                    const audioCtx = new AudioContextClass();
+                    
+                    // Create and play a silent buffer - REQUIRED for iOS audio
+                    const buffer = audioCtx.createBuffer(1, 1, 22050);
+                    const source = audioCtx.createBufferSource();
+                    source.buffer = buffer;
+                    source.connect(audioCtx.destination);
+                    source.start(0);
+                    
+                    console.log("iOS audio context created and silent buffer played");
+                    
+                    // Resume the audio context immediately from user gesture
+                    if (audioCtx.state === 'suspended') {
+                        audioCtx.resume().then(() => {
+                            console.log("iOS AudioContext resumed from user gesture");
+                        });
+                    }
+                    
+                    // For iOS, use this audio context with Tone.js
+                    Tone.setContext(audioCtx);
+                }
+                
                 startAudioVisualization();
             }
         }
@@ -284,46 +312,106 @@
                 if (isIOS) {
                     loadingMsg = document.createElement('div');
                     loadingMsg.id = 'audioLoadingMsg';
-                    loadingMsg.innerText = 'Starting...';
+                    loadingMsg.innerText = 'Starting audio...';
                     document.body.appendChild(loadingMsg);
+                    
+                    // iOS requires forced unmuting of context
+                    if (Tone.context.state !== 'running') {
+                        Tone.context.resume().then(() => {
+                            console.log("Tone context resumed for iOS");
+                        });
+                    }
+                }
+                
+                // iOS specific volume boost (iOS has lower volume)
+                if (isIOS) {
+                    // Create a master volume boost for iOS
+                    const boostVolume = new Tone.Volume(6).toDestination(); // +6dB boost
+                    Tone.Destination.chain(boostVolume);
+                    console.log("Added volume boost for iOS");
                 }
                 
                 // Start tone with proper iOS unlocking
                 Tone.start().then(() => {
                     console.log("Tone.js started successfully");
                     
-                    // For iOS, additional unlocking
+                    // For iOS, check again if context is running
                     if (isIOS && Tone.context.state !== 'running') {
+                        console.log("Forcing Tone context resume again for iOS");
                         Tone.context.resume();
                     }
                     
                     // Simplified setup for mobile
-                    setupAudioEngine(isIOS || isMobile);
+                    setupAudioEngine(isIOS);  // Special settings for iOS
                     
                     // Start music with delay
                     setTimeout(() => {
-                        startAmbientMusic();
-                        
-                        // Create melodic sequence with reduced complexity on mobile
-                        if (isMobile) {
-                            createSimpleMelodicSequence();
-                        } else {
-                            createMelodicSequence();
-                        }
-                        
-                        audioInitialized = true;
-                        console.log("Audio initialized successfully");
-                        
-                        // Remove loading message
-                        if (loadingMsg) {
+                        // For iOS, play a test sound to verify audio is working
+                        if (isIOS) {
+                            const testSynth = new Tone.Synth({
+                                oscillator: { type: 'sine' },
+                                envelope: { attack: 0.01, decay: 0.2, sustain: 0, release: 0.1 },
+                                volume: -6
+                            }).toDestination();
+                            
+                            // Play a quick test sound - will help unlock audio
+                            testSynth.triggerAttackRelease("C5", "16n", Tone.now(), 0.9);
+                            testSynth.triggerAttackRelease("G4", "16n", Tone.now() + 0.1, 0.9);
+                            
+                            console.log("iOS test sound played");
+                            
+                            // Give time for the test sound
                             setTimeout(() => {
-                                loadingMsg.remove();
-                            }, 1000);
+                                startAmbientMusic();
+                                createSimpleMelodicSequence(); // Always use simple for iOS
+                                
+                                audioInitialized = true;
+                                console.log("iOS audio initialized successfully");
+                                
+                                // Remove loading message
+                                if (loadingMsg) {
+                                    setTimeout(() => {
+                                        loadingMsg.remove();
+                                    }, 1000);
+                                }
+                            }, 500);
+                        } else {
+                            // Normal flow for non-iOS
+                            startAmbientMusic();
+                            
+                            if (isMobile) {
+                                createSimpleMelodicSequence();
+                            } else {
+                                createMelodicSequence();
+                            }
+                            
+                            audioInitialized = true;
+                            console.log("Audio initialized successfully");
+                            
+                            if (loadingMsg) loadingMsg.remove();
                         }
                     }, isIOS ? 1000 : 100);
                 }).catch(err => {
                     console.error("Failed to initialize audio:", err);
                     if (loadingMsg) loadingMsg.remove();
+                    
+                    // For iOS, try one more direct approach if Tone.js fails
+                    if (isIOS) {
+                        console.log("Trying direct audio approach for iOS");
+                        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        
+                        gain.gain.value = 0.1;
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        
+                        osc.frequency.value = 440;
+                        osc.start(0);
+                        osc.stop(0.1);
+                        
+                        console.log("Direct iOS audio test attempted");
+                    }
                 });
             } catch (e) {
                 console.error("Error in audio initialization:", e);
@@ -332,14 +420,32 @@
         
         // Setup audio engine with appropriate complexity
         function setupAudioEngine(simplify) {
+            // iOS requires special handling
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            
             // Create a limiter to prevent clipping
             const masterLimiter = new Tone.Limiter(-1.5).toDestination();
             
+            // For iOS, add a compressor to boost perceived volume
+            let audioOutput = masterLimiter;
+            if (isIOS) {
+                const compressor = new Tone.Compressor({
+                    threshold: -24,
+                    ratio: 4,
+                    attack: 0.003,
+                    release: 0.25,
+                    knee: 5
+                }).connect(masterLimiter);
+                audioOutput = compressor;
+                
+                console.log("Added compressor for iOS volume boost");
+            }
+            
             // Simple reverb with shorter decay
             const masterReverb = new Tone.Reverb({
-                decay: simplify ? 2 : 6,
-                wet: simplify ? 0.3 : 0.4
-            }).connect(masterLimiter);
+                decay: isIOS ? 1 : (simplify ? 2 : 6), // Very short decay for iOS
+                wet: isIOS ? 0.2 : (simplify ? 0.3 : 0.4) // Less wet for iOS
+            }).connect(audioOutput);
             
             // Create main synth with simpler settings
             synthA = new Tone.PolySynth(Tone.Synth, {
@@ -347,16 +453,16 @@
                     type: 'sine'
                 },
                 envelope: {
-                    attack: simplify ? 0.05 : 0.02,
-                    decay: simplify ? 0.2 : 0.3,
-                    sustain: simplify ? 0.3 : 0.4,
-                    release: simplify ? 1 : 3
+                    attack: isIOS ? 0.01 : (simplify ? 0.05 : 0.02),
+                    decay: isIOS ? 0.1 : (simplify ? 0.2 : 0.3),
+                    sustain: isIOS ? 0.5 : (simplify ? 0.3 : 0.4),
+                    release: isIOS ? 0.5 : (simplify ? 1 : 3)
                 },
-                volume: simplify ? -12 : -8
+                volume: isIOS ? 0 : (simplify ? -12 : -8) // Much louder for iOS
             }).connect(masterReverb);
             
             // Lower polyphony for better performance
-            synthA.maxPolyphony = simplify ? 3 : 6;
+            synthA.maxPolyphony = isIOS ? 2 : (simplify ? 3 : 6);
             
             // Create ambient pad with simpler settings
             ambientSynth = new Tone.PolySynth(Tone.Synth, {
@@ -364,16 +470,16 @@
                     type: 'sine'
                 },
                 envelope: {
-                    attack: simplify ? 0.5 : 2,
-                    decay: simplify ? 0.5 : 1,
-                    sustain: simplify ? 0.4 : 0.6,
-                    release: simplify ? 1 : 4
+                    attack: isIOS ? 0.1 : (simplify ? 0.5 : 2),
+                    decay: isIOS ? 0.2 : (simplify ? 0.5 : 1),
+                    sustain: isIOS ? 0.6 : (simplify ? 0.4 : 0.6),
+                    release: isIOS ? 0.5 : (simplify ? 1 : 4)
                 },
-                volume: simplify ? -18 : -12
+                volume: isIOS ? 0 : (simplify ? -18 : -12) // Much louder for iOS
             }).connect(masterReverb);
             
             // Lower polyphony
-            ambientSynth.maxPolyphony = simplify ? 2 : 6;
+            ambientSynth.maxPolyphony = isIOS ? 1 : (simplify ? 2 : 6);
             
             // Create a plucky synth with simpler settings
             chordPad = new Tone.PolySynth(Tone.Synth, {
@@ -381,16 +487,20 @@
                     type: 'triangle'
                 },
                 envelope: {
-                    attack: 0.1,
-                    decay: 0.3,
-                    sustain: simplify ? 0.4 : 0.5,
-                    release: simplify ? 1 : 2
+                    attack: isIOS ? 0.01 : 0.1,
+                    decay: isIOS ? 0.1 : 0.3,
+                    sustain: isIOS ? 0.3 : (simplify ? 0.4 : 0.5),
+                    release: isIOS ? 0.3 : (simplify ? 1 : 2)
                 },
-                volume: simplify ? -15 : -10
+                volume: isIOS ? 0 : (simplify ? -15 : -10) // Much louder for iOS
             }).connect(masterReverb);
             
             // Lower polyphony
-            chordPad.maxPolyphony = simplify ? 2 : 4;
+            chordPad.maxPolyphony = isIOS ? 1 : (simplify ? 2 : 4);
+            
+            if (isIOS) {
+                console.log("Using iOS-specific audio settings with higher volume");
+            }
         }
         
         // Start ambient background music
@@ -422,15 +532,21 @@
             if (!audioInitialized || !ambientSynth) return;
             
             try {
+                console.log("Playing chord:", chordIndex);
+                
                 // Release previous chord
                 ambientSynth.releaseAll();
                 
-                // For iOS, use a simpler approach with single notes on iOS
+                // For iOS, use a simpler approach with single notes
                 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
                 if (isIOS) {
-                    // Use only the first two notes of the chord for iOS to reduce processing
-                    const simpleChord = chords[chordIndex].slice(0, 2);
-                    ambientSynth.triggerAttack(simpleChord, Tone.now(), 0.1); // Lower velocity
+                    // Use only one note with higher velocity for iOS
+                    const simpleNote = chords[chordIndex][0]; // Just the root note
+                    console.log("iOS playing single note:", simpleNote);
+                    ambientSynth.triggerAttack(simpleNote, Tone.now(), 0.9); // High velocity for iOS
+                    
+                    // Also play a stronger pulse with the main synth
+                    synthA.triggerAttackRelease(simpleNote, "2n", Tone.now(), 0.8);
                 } else {
                     // Regular approach for other platforms
                     ambientSynth.triggerAttack(chords[chordIndex], Tone.now(), 0.2);

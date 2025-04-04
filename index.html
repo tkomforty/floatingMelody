@@ -26,15 +26,24 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            padding: 15px 30px;
-            background: rgba(0, 100, 255, 0.7);
+            padding: 20px 40px;
+            background: rgba(0, 100, 255, 0.8);
             color: white;
             border: none;
             border-radius: 50px;
-            font-size: 18px;
+            font-size: 22px;
+            font-weight: bold;
             z-index: 100;
             cursor: pointer;
-            box-shadow: 0 0 20px rgba(0, 100, 255, 0.5);
+            box-shadow: 0 0 30px rgba(0, 100, 255, 0.7);
+            -webkit-tap-highlight-color: transparent;
+            /* Make touch target larger */
+            min-width: 200px;
+            text-align: center;
+            /* iOS-specific styles */
+            -webkit-appearance: none;
+            -webkit-touch-callout: none;
+            user-select: none;
         }
         #instructions {
             position: absolute;
@@ -56,8 +65,50 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
 </head>
 <body>
-    <button id="startButton">Tap to Begin</button>
+    <button id="startButton" ontouchstart="void(0);" ontouchend="void(0);">Tap to Begin</button>
     <div id="instructions">Tap and move to interact with the galaxy</div>
+    
+    <!-- iOS-specific: Add a redundant fallback button that appears if main button fails -->
+    <script>
+        // Add a delayed check - if button still shows after 2 seconds, we'll add a fallback
+        setTimeout(function() {
+            const startBtn = document.getElementById('startButton');
+            if (startBtn && window.getComputedStyle(startBtn).display !== 'none') {
+                const fallbackBtn = document.createElement('div');
+                fallbackBtn.id = 'fallbackButton';
+                fallbackBtn.innerText = '⭐ TAP HERE ⭐';
+                fallbackBtn.style.position = 'absolute';
+                fallbackBtn.style.top = '60%';
+                fallbackBtn.style.left = '50%';
+                fallbackBtn.style.transform = 'translate(-50%, -50%)';
+                fallbackBtn.style.padding = '25px 45px';
+                fallbackBtn.style.background = 'rgba(255, 50, 150, 0.9)';
+                fallbackBtn.style.color = 'white';
+                fallbackBtn.style.fontWeight = 'bold';
+                fallbackBtn.style.fontSize = '24px';
+                fallbackBtn.style.borderRadius = '50px';
+                fallbackBtn.style.zIndex = '200';
+                fallbackBtn.style.textAlign = 'center';
+                fallbackBtn.style.boxShadow = '0 0 30px rgba(255, 50, 150, 0.8)';
+                fallbackBtn.style.cursor = 'pointer';
+                fallbackBtn.style.userSelect = 'none';
+                fallbackBtn.style.webkitTapHighlightColor = 'transparent';
+                
+                document.body.appendChild(fallbackBtn);
+                
+                // Add event listeners to the fallback button
+                ['click', 'touchstart', 'touchend'].forEach(function(event) {
+                    fallbackBtn.addEventListener(event, function(e) {
+                        e.preventDefault();
+                        startBtn.style.display = 'none';
+                        fallbackBtn.style.display = 'none';
+                        if (typeof startApp === 'function') startApp();
+                        return false;
+                    }, false);
+                });
+            }
+        }, 2000);
+    </script>
     
     <script>
         // Debug mode
@@ -125,6 +176,10 @@
             // Prevent default touch behaviors
             canvas.elt.addEventListener('touchstart', function(e) {
                 e.preventDefault();
+                // Handle potential direct canvas touches
+                if (startButton && startButton.style.display !== 'none' && e.touches.length > 0) {
+                    startApp();
+                }
             }, { passive: false });
             
             canvas.elt.addEventListener('touchmove', function(e) {
